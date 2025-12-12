@@ -8,7 +8,7 @@ Each teammate will create a small mini-game inside the `game/` folder, and each 
 * `create_item`
 * `delete_item`
 * `validate_item`
-* `dispatch_item`
+* `update_item`
 
 Each folder contains a separate game, but all games share:
 
@@ -27,7 +27,7 @@ Use these as your gameplay “lego blocks.” All responses are JSON.
 - `POST /api/items_create.php` — body: `item_name`, `quantity`, `price`, optional `category`; creates a new item.
 - `POST /api/items_update.php` — body: `id` (required) plus any of `item_name`, `quantity`, `price`, `category`; only provided fields change.
 - `POST /api/items_delete.php` — body: `id`; hard deletes an item.
-- `POST /api/items_dispatch.php` — body: `id`; “dispatches” by deleting (or swap to status-based logic if your game prefers).
+- `POST /api/items_validate.php` - body: `item_name`, `quantity`, `price`, optional `category`, optional `id` (for update); dry-run validation without altering data.
 - `POST /api/items_quantity.php` — body: `id` plus **either** `delta` (can be negative/positive, clamped at 0) **or** `quantity` (absolute set); returns the new quantity. Perfect for damage/loot/ammo-style mechanics.
 
 This guide teaches you exactly how to build your game without breaking the main system.
@@ -50,7 +50,7 @@ For example:
 game/create_item/
 game/delete_item/
 game/validate_item/
-game/dispatch_item/
+game/update_item/
 ```
 
 Each folder represents the **feature/API you will interact with**, **not the game style**.
@@ -226,38 +226,20 @@ apiCreateItem({
 
 ---
 
-## 🔵 **4. dispatch_item/**
+## 🔵 **4. update_item/**
 
-This relates to **moving items out of inventory** (shipping, delivery, etc.).
+This relates to **editing existing inventory entries** (rename, reprice, tweak quantities, reclassify).
 
-There are 2 approaches:
+Core approaches:
 
-### Option A (Easy)
-
-Use `apiDeleteItem()` as your “dispatch” (meaning shipped = removed).
-
-### Option B (Advanced)
-
-Add a new column to DB:
-
-```
-status ENUM('IN_STOCK', 'DISPATCHED')
-```
-
-And create a small new API endpoint:
-
-```
-api/items_dispatch.php
-```
-
-This endpoint updates the item’s status.
+* Use `apiUpdateItem()` to change any combination of name, quantity, price, and category.
+* Pair it with `apiValidateItem()` to pre-check payloads before sending updates from your game UI.
 
 Game ideas:
 
-* Drive truck to deliver items
-* Conveyor belt sending parcels
-* Drag items onto a boat to ship
-
+* Repair bay that fixes broken items (update name/category).
+* Calibration station that tweaks prices/quantities after testing.
+* Relabel conveyor where players correct mislabeled crates.
 ---
 
 # 6. Writing Your Game’s index.php
@@ -348,7 +330,7 @@ Example:
 <li><a href="create_item/index.php">Create Item Game</a></li>
 <li><a href="delete_item/index.php">Delete Item Game</a></li>
 <li><a href="validate_item/index.php">Validate Item Game</a></li>
-<li><a href="dispatch_item/index.php">Dispatch Item Game</a></li>
+<li><a href="update_item/index.php">Update Item Game</a></li>
 ```
 
 ---

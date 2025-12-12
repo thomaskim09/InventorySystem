@@ -40,14 +40,14 @@ Each mini-game links to **one main API function**:
 * `create_item`
 * `delete_item`
 * `validate_item`
-* `dispatch_item`
+* `update_item`
 
 Examples:
 
 * "Create Item" could be stocking shelves, mixing potions, crafting items.
 * "Delete Item" could be shredding papers, throwing trash, demolition game.
 * "Validate Item" could be border checkpoint, robot inspector, security scanner.
-* "Dispatch Item" could be truck delivery, conveyor belt, shipping puzzle.
+* "Update Item" could be repair lab, repricing station, relabeling puzzle.
 
 **Teammates have full freedom** to design any game they like, as long as it calls the corresponding API.
 
@@ -69,6 +69,7 @@ inventory_system/
 │   ├── items_list.php
 │   ├── items_create.php
 │   ├── items_update.php
+│   ├── items_validate.php
 │   └── items_delete.php
 │
 ├── game/               # Phaser mini-games
@@ -88,7 +89,7 @@ inventory_system/
 │   │   ├── index.php
 │   │   └── main.js
 │   │
-│   └── dispatch_item/  # Mini-game for delivery / shipping logic
+│   └── update_item/  # Mini-game for update/edit logic
 │       ├── index.php
 │       └── main.js
 │
@@ -97,7 +98,7 @@ inventory_system/
 │   ├── create_item/    # Assets for the create_item game
 │   ├── delete_item/
 │   ├── validate_item/
-│   └── dispatch_item/
+│   └── update_item/
 │
 └── docs/
     ├── README.md
@@ -167,6 +168,10 @@ $dbname = 'inventory_db';
 
 `POST api/items_update.php`
 
+### Validate Item
+
+`POST api/items_validate.php` — dry-run validation for create/update payloads without changing data.
+
 ### Delete Item
 
 `POST api/items_delete.php`
@@ -203,7 +208,7 @@ apiCreateItem({
 
 The rules:
 
-1. **Your game must at least call one API (create/delete/validate/dispatch).**
+1. **Your game must at least call one API (create/delete/validate/update).**
 2. You may add animations, physics, sound effects, UI elements, etc.
 3. All game assets go into `assets/<feature>/`.
 4. Do not modify other teammates’ assets or code.

@@ -152,12 +152,12 @@
     </article>
 
     <article class="card">
-      <h2>Dispatch Item Game</h2>
+      <h2>Update Item Game</h2>
       <p>
-        Focus on dispatching or shipping items.  
-        Example - trucks, conveyor belts, boats, or delivery routes.
+        Focus on editing existing inventory records.  
+        Example - repair bay, calibration lab, retagging mislabeled stock.
       </p>
-      <a href="dispatch_item/index.php">Play</a>
+      <a href="update_item/index.php">Play</a>
     </article>
   </section>
 </main>

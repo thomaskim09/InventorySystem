@@ -16,16 +16,16 @@
     * `create_item/`
     * `delete_item/`
     * `validate_item/`
-    * `dispatch_item/`
+    * `update_item/`
 
 * `api/`
 
-  * `items_list.php`、`items_create.php`、`items_update.php`、`items_delete.php`、`items_dispatch.php`
+  * `items_list.php`、`items_create.php`、`items_update.php`、`items_delete.php`、`items_validate.php`
   * 所有游戏和 normal 模式都通过这些 PHP API 操作数据库
 
 * `assets/`
 
-  * `create_item/`、`delete_item/`、`validate_item/`、`dispatch_item/`：各自功能对应的素材文件夹
+  * `create_item/`、`delete_item/`、`validate_item/`、`update_item/`：各自功能对应的素材文件夹
   * `global/`：公共素材（按钮、UI 等）
 
 * `docs/`
@@ -63,10 +63,10 @@
      * 故意传错数据，看 API 返回的错误信息
    * 游戏可以是：海关检查、机器人验货、帮 NPC 改错价钱等
 
-4. `dispatch_item`
+4. `update_item`
 
    * 主题：**发货 / 出库 / 派送**
-   * 简单版目前用 `apiDispatchItem`，底层暂时当成删除（视为发出去）
+   * 简单版目前用 `apiValidateItem`，底层暂时当成删除（视为发出去）
    * 游戏可以是：卡车送货、传送带、船运、快递路线规划等
 
 > 核心原则：
@@ -112,7 +112,7 @@
 
 2. **选一个功能文件夹**
 
-   * 从 `create_item / delete_item / validate_item / dispatch_item` 中选一个
+   * 从 `create_item / delete_item / validate_item / update_item` 中选一个
    * 这就是你主要负责的小游戏模块
 
 3. **在 game 子目录里搭游戏页面**

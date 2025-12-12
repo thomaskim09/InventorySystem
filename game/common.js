@@ -151,20 +151,37 @@
   }
 
   /**
-   * (Optional) Dispatch an item.
-   * This is for the "dispatch_item" game if you decide to implement a
-   * separate dispatch API (e.g. change status, create delivery log).
+   * Validate item data without mutating the database.
+   * Useful for the validate_item game to pre-flight user input.
    *
-   * You need a corresponding PHP file: api/items_dispatch.php
-   *
-   * @param {number|string} id Item ID to dispatch.
-   * @returns {Promise<Object>} { success, message }
+   * @param {Object} payload
+   * @param {number|string} [payload.id] Existing item id if validating an update.
+   * @param {string} [payload.name]
+   * @param {number|string} [payload.quantity]
+   * @param {number|string} [payload.price]
+   * @param {string} [payload.category]
+   * @returns {Promise<Object>} { success, message, errors?, operation?, data? }
    */
-  async function apiDispatchItem(id) {
+  async function apiValidateItem(payload = {}) {
     const formData = new FormData();
-    formData.append('id', id);
 
-    return apiRequest('items_dispatch.php', {
+    if (payload.id !== undefined) {
+      formData.append('id', payload.id);
+    }
+    if (payload.name !== undefined) {
+      formData.append('item_name', payload.name);
+    }
+    if (payload.quantity !== undefined) {
+      formData.append('quantity', payload.quantity);
+    }
+    if (payload.price !== undefined) {
+      formData.append('price', payload.price);
+    }
+    if (payload.category !== undefined) {
+      formData.append('category', payload.category);
+    }
+
+    return apiRequest('items_validate.php', {
       method: 'POST',
       body: formData
     });
@@ -175,5 +192,5 @@
   window.apiCreateItem = apiCreateItem;
   window.apiUpdateItem = apiUpdateItem;
   window.apiDeleteItem = apiDeleteItem;
-  window.apiDispatchItem = apiDispatchItem;
+  window.apiValidateItem = apiValidateItem;
 })();
