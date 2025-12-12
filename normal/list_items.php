@@ -101,11 +101,14 @@ $result = $stmt->get_result();
                  class="btn btn-sm btn-outline-primary me-1">
                 Edit
               </a>
-              <a href="delete_item.php?id=<?php echo $row['id']; ?>"
-                 class="btn btn-sm btn-outline-danger"
-                 onclick="return confirm('Delete this item?');">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger js-delete-btn"
+                data-item-id="<?php echo $row['id']; ?>"
+                data-item-name="<?php echo htmlspecialchars($row['item_name'], ENT_QUOTES, 'UTF-8'); ?>"
+              >
                 Delete
-              </a>
+              </button>
             </td>
           </tr>
         <?php endwhile; ?>
@@ -122,5 +125,42 @@ $result = $stmt->get_result();
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark text-light border border-secondary">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title">Confirm Deletion</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Delete <strong id="deleteItemName"></strong>?</p>
+        <p class="text-warning small mb-0">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer border-secondary">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="post" action="delete_item.php" class="mb-0">
+          <input type="hidden" name="id" id="deleteItemId">
+          <button type="submit" class="btn btn-danger">Yes, Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const deleteModalElement = document.getElementById('deleteModal');
+  const deleteModal = new bootstrap.Modal(deleteModalElement);
+  const deleteItemName = document.getElementById('deleteItemName');
+  const deleteItemId = document.getElementById('deleteItemId');
+
+  document.querySelectorAll('.js-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      deleteItemName.textContent = btn.dataset.itemName;
+      deleteItemId.value = btn.dataset.itemId;
+      deleteModal.show();
+    });
+  });
+</script>
 </body>
 </html>
