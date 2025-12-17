@@ -21,8 +21,7 @@
 (function () {
   // Base URL of the API folder, relative to /game/common.js
   // Base URL of the API folder, from the web root
-  const API_BASE = '/inventory_system/api/';
-
+  const API_BASE = '/InventorySystem-main/api/';
 
   /**
    * Internal helper: make a fetch request and parse JSON safely.
