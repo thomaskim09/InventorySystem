@@ -43,8 +43,9 @@ const BOX_BASE_SCALE = 0.37; // Change this to resize: 0.05=tiny, 0.08=medium, 0
 
 // --- PHASER OBJECTS ---
 let timerEvent;
-let boxSprite;
+let bioSprite;
 let particles;
+let backgroundImage; // Store background reference
 let arrowUpBtn, arrowDownBtn, dispatchBtn;
 
 // UI Labels
@@ -52,45 +53,52 @@ let labels = {};
 
 // --- ASSET KEYS ---
 const ASSETS = {
-    BG: 'bg_logistics',
+    BG: 'bg_lab',
     BOX: 'box_crate',
-    ARROW_UP: 'btn_arrow_up',
-    ARROW_DOWN: 'btn_arrow_down',
-    BTN_SEND: 'btn_dispatch',
-    FLARE: 'flare'
+    ARROW_UP: 'btn_inject',
+    ARROW_DOWN: 'btn_extract',
+    BTN_SEND: 'btn_stabilize',
 };
 
 function preload() {
     // --- LOAD IMAGES ---
-    this.load.image(ASSETS.BG, '../../assets/update_item/img/bg_warehouse.png');
-    this.load.image(ASSETS.BOX, '../../assets/update_item/img/box_create.png');
-    this.load.image(ASSETS.ARROW_UP, '../../assets/update_item/img/arrow_up.png');
-    this.load.image(ASSETS.ARROW_DOWN, '../../assets/update_item/img/arrow_down.png');
-    this.load.image(ASSETS.BTN_SEND, '../../assets/update_item/img/btn_send.png');
-    this.load.image(ASSETS.FLARE, '../../assets/global/flare.png');
+    this.load.image('bio_small', '../../assets/update_item/img/bio_small.png');
+    this.load.image('bio_medium', '../../assets/update_item/img/bio_medium.png');
+    this.load.image('bio_large', '../../assets/update_item/img/bio_large.png');
 
-    // Fallback if images don't load
+    this.load.image(ASSETS.ARROW_UP, '../../assets/update_item/img/btn_inject.png');
+    this.load.image(ASSETS.ARROW_DOWN, '../../assets/update_item/img/btn_extract.png');
+    this.load.image(ASSETS.BTN_SEND, '../../assets/update_item/img/btn_stabilize.png');
+    
+    this.load.image(ASSETS.BG, '../../assets/update_item/img/bg_lab.png');
+
     this.load.on('loaderror', (file) => {
-        console.warn('Failed to load:', file.key);
+        console.error('Image failed to load, please check the path:', file.key, file.src);
     });
 }
 
 function create() {
+    if (!this.textures.exists('flare')) {
+        const graphics = this.make.graphics({ x: 0, y: 0, add: false });
+        graphics.fillStyle(0xffffff, 1);
+        graphics.fillCircle(8, 8, 8);
+        graphics.generateTexture('flare', 16, 16);
+    }
     // Background
     if (this.textures.exists(ASSETS.BG)) {
-        this.add.image(400, 300, ASSETS.BG);
+        backgroundImage = this.add.image(400, 300, ASSETS.BG).setDisplaySize(800, 600);
     } else {
-        this.add.rectangle(400, 300, 800, 600, 0x1a1a2e);
+        console.log("Background image missing, using solid color.");
+        backgroundImage = this.add.rectangle(400, 300, 800, 600, 0x1a1a2e);
     }
 
-    // Box sprite (hidden initially)
-    // Box size controlled by BOX_BASE_SCALE constant at top
-    if (this.textures.exists(ASSETS.BOX)) {
-        boxSprite = this.add.image(400, 300, ASSETS.BOX);
+    if (this.textures.exists('bio_medium')) {
+        bioSprite = this.add.image(400, 400, 'bio_medium');
     } else {
-        boxSprite = this.add.rectangle(400, 300, 180, 180, 0x8B4513);
+        // Fallback
+        bioSprite = this.add.rectangle(400, 400, 150, 150, 0x00ffff);
     }
-    boxSprite.setScale(0); // Initially hidden
+    bioSprite.setScale(0);
 
     // Particle emitter
     if (this.textures.exists(ASSETS.FLARE)) {
@@ -127,6 +135,27 @@ function create() {
     switchState(this, "MENU");
 }
 
+function updateBioState(scene) {
+    if (!bioSprite || !bioSprite.setTexture) return;
+
+    const thresholdLow = 20;
+    const thresholdHigh = 80;
+
+    if (userInputValue < thresholdLow) {
+        bioSprite.setTexture('bio_small');
+        labels.statusText.setText("STATUS: LOW ENERGY (Hungry)");
+        labels.statusText.setColor('#ffff00');
+    } else if (userInputValue > thresholdHigh) {
+        bioSprite.setTexture('bio_large');
+        labels.statusText.setText("STATUS: CRITICAL OVERLOAD!");
+        labels.statusText.setColor('#ff4444');
+    } else {
+        bioSprite.setTexture('bio_medium');
+        labels.statusText.setText("STATUS: STABLE");
+        labels.statusText.setColor('#00ff88');
+    }
+}
+
 function update(time, delta) {
     if (gameState === "PLAYING") {
         // Update timer bar
@@ -145,12 +174,15 @@ function update(time, delta) {
 function switchState(scene, newState) {
     console.log('🔄 Switching to:', newState);
     gameState = newState;
-    const keepObjects = [labels.scoreText, labels.levelText, labels.timerBg, labels.timerBar, boxSprite, particles];
+
+    // 1. Define what absolutely cannot be deleted (background, score, countdown bar, creature itself, particles)
+    const keepObjects = [labels.scoreText, labels.levelText, labels.timerBg, labels.timerBar, bioSprite, particles, backgroundImage];
     
+    // 2. General Cleanup: Cleans up all unwanted objects on the screen.
     if (scene.children && scene.children.list) {
+        //The logic here is: delete everything that's not in the keepObjects list.
         const toDestroy = scene.children.list.filter(obj => {
-            return !keepObjects.includes(obj) && 
-                   (obj.type === 'Text' || obj.type === 'Container' || obj.type === 'Rectangle');
+            return !keepObjects.includes(obj);
         });
         
         toDestroy.forEach(obj => {
@@ -160,29 +192,44 @@ function switchState(scene, newState) {
         });
     }
 
-    if (arrowUpBtn) {
-        arrowUpBtn = null;
+    // 3. [Critical Fix] Explicitly Clean Up Button Variables
+    // To prevent variables from still containing references to objects that have already been destroyed, or to prevent any objects from slipping through the net.
+    if (arrowUpBtn) { 
+        arrowUpBtn.destroy(); // Completely destroy
+        arrowUpBtn = null;    // Clear variables
     }
-    if (arrowDownBtn) {
-        arrowDownBtn = null;
+    if (arrowDownBtn) { 
+        arrowDownBtn.destroy(); 
+        arrowDownBtn = null; 
     }
-    if (dispatchBtn) {
-        dispatchBtn = null;
+    if (dispatchBtn) { 
+        dispatchBtn.destroy(); 
+        dispatchBtn = null; 
     }
 
+    // 4. Clean up UI Labels
     const keepLabels = ['scoreText', 'levelText', 'timerBg', 'timerBar'];
     Object.keys(labels).forEach(key => {
         if (!keepLabels.includes(key)) {
+            // If labels[key] is a Phaser object, also attempt to destroy it.
+            if (labels[key] && labels[key].destroy) {
+                labels[key].destroy();
+            }
             delete labels[key];
         }
     });
     
-    if (boxSprite) {
-        boxSprite.setScale(0);
-        boxSprite.setAlpha(1);
-        boxSprite.y = 300;
+    // 5. Reset creature status (hide or show)
+    if (bioSprite) {
+        bioSprite.setScale(0); // Hides by default, only shows up after entering the game.
+        bioSprite.setAlpha(1);
+        bioSprite.y = 400;
+        // Remove any animations that may exist on the creature/Tweens
+        scene.tweens.killTweensOf(bioSprite);
+        bioSprite.angle = 0; 
     }
 
+    // 6. Create a corresponding interface based on the new state
     if (newState === "MENU") {
         createMenuUI(scene);
     } else if (newState === "SELECT_MODE") {
@@ -209,7 +256,7 @@ function startNewRound(scene) {
 }
 
 function generateNewTask(scene) {
-    labels.statusText.setText("📡 LOADING MANIFEST...");
+    labels.statusText.setText("LOADING MANIFEST...");
     labels.statusText.setColor('#ffaa00');
     
     if (availableItems.length === 0) {
@@ -249,16 +296,28 @@ function generateNewTask(scene) {
     }
     
     updateDisplayValues();
+    updateBioState(scene);
     
     scene.tweens.add({
-        targets: boxSprite,
+        targets: bioSprite,
         scale: { from: 0, to: BOX_BASE_SCALE },
         duration: 400,
-        ease: 'Back.out'
+        ease: 'Back.out',
+        onComplete: () => {
+            scene.tweens.add({
+                targets: bioSprite,
+                scaleX: BOX_BASE_SCALE * 1.05,
+                scaleY: BOX_BASE_SCALE * 0.95,
+                yoyo: true,        
+                repeat: -1,        
+                duration: 1500,    
+                ease: 'Sine.easeInOut'
+            });
+        }
     });
     
-    labels.statusText.setText("📋 NEW ORDER RECEIVED");
-    labels.statusText.setColor('#001F3D');
+    labels.statusText.setText("NEW ORDER RECEIVED");
+    labels.statusText.setColor('#00FF00');
     
     console.log("✅ Task generated:", currentTask);
 }
@@ -270,18 +329,47 @@ function adjustValue(scene, amount) {
     if (userInputValue < 0) userInputValue = 0;
     
     updateDisplayValues();
+    updateBioState(scene);
     
+    const msg = amount > 0 ? `+${amount}` : `${amount}`;
+    const color = amount > 0 ? '#00FF00' : '#FF4444';
+
+    showFloatingText(scene, bioSprite.x, bioSprite.y - 80, msg, color);
+
     // Visual feedback - slight wobble instead of scale
     // Stop all rotation animations first and reset angle
-    scene.tweens.killTweensOf(boxSprite);
-    boxSprite.angle = 0;
+    scene.tweens.killTweensOf(bioSprite);
+    bioSprite.angle = 0;
     
     scene.tweens.add({
-        targets: boxSprite,
+        targets: bioSprite,
         angle: amount > 0 ? 5 : -5,
-        duration: 80,
+        duration: 50,
         yoyo: true,
         ease: 'Quad.easeInOut'
+    });
+}
+
+function showFloatingText(scene, x, y, message, color) {
+    const text = scene.add.text(x, y, message, {
+        fontSize: '28px',           
+        fontFamily: 'Courier New',
+        fontStyle: 'bold',
+        fill: color,
+        stroke: '#000000',         
+        strokeThickness: 4
+    }).setOrigin(0.5);
+
+    scene.tweens.add({
+        targets: text,
+        y: y - 60,
+        alpha: 0,
+        scale: 1.5,
+        duration: 800,
+        ease: 'Power1',
+        onComplete: () => {
+            text.destroy();
+        }
     });
 }
 
@@ -322,7 +410,7 @@ function attemptDispatch(scene) {
     if (gameMode === "RANDOM") {
         // Random mode: Check if value matches target
         if (userInputValue !== currentTask.targetQty) {
-            labels.statusText.setText("❌ QUANTITY MISMATCH!");
+            labels.statusText.setText("QUANTITY MISMATCH!");
             labels.statusText.setColor('#ff3333');
             
             scene.cameras.main.shake(200, 0.01);
@@ -337,7 +425,7 @@ function attemptDispatch(scene) {
     } else {
         // Adjust mode: Update directly
         if (userInputValue === currentTask.currentQty) {
-            labels.statusText.setText("⚠️ NO CHANGES MADE!");
+            labels.statusText.setText("NO CHANGES MADE!");
             labels.statusText.setColor('#ffaa00');
             isBusy = false;
             return;
@@ -345,7 +433,7 @@ function attemptDispatch(scene) {
     }
 
     // SUCCESS - Update database
-    labels.statusText.setText("📤 DISPATCHING...");
+    labels.statusText.setText("DISPATCHING...");
     labels.statusText.setColor('#00aaff');
 
     console.log("Calling API with:", { id: currentTask.id, quantity: userInputValue });
@@ -359,7 +447,7 @@ function attemptDispatch(scene) {
         if (res.success) {
             handleSuccess(scene);
         } else {
-            labels.statusText.setText("❌ " + (res.message || "UPDATE FAILED"));
+            labels.statusText.setText((res.message || "UPDATE FAILED"));
             labels.statusText.setColor('#ff0000');
             
             scene.time.delayedCall(2000, () => {
@@ -368,8 +456,8 @@ function attemptDispatch(scene) {
             });
         }
     }).catch(err => {
-        console.error("❌ API Error:", err);
-        labels.statusText.setText("⚠ NETWORK ERROR");
+        console.error("API Error:", err);
+        labels.statusText.setText("NETWORK ERROR");
         labels.statusText.setColor('#ff0000');
         
         scene.time.delayedCall(2000, () => {
@@ -379,17 +467,17 @@ function attemptDispatch(scene) {
 }
 
 function handleSuccess(scene) {
-    labels.statusText.setText("✅ DISPATCHED!");
+    labels.statusText.setText("DISPATCHED!");
     labels.statusText.setColor('#00ff00');
 
     // Particle effect
     if (particles) {
-        particles.emitParticleAt(boxSprite.x, boxSprite.y, 30);
+        particles.emitParticleAt(bioSprite.x, bioSprite.y, 30);
     }
 
     // Box success animation: jump + flicker
     scene.tweens.add({
-        targets: boxSprite,
+        targets: bioSprite,
         y: 200,
         duration: 300,
         ease: 'Cubic.out',
@@ -397,7 +485,7 @@ function handleSuccess(scene) {
         onComplete: () => {
             // Flicker effect
             scene.tweens.add({
-                targets: boxSprite,
+                targets: bioSprite,
                 alpha: 0.3,
                 duration: 100,
                 yoyo: true,
@@ -441,7 +529,7 @@ function handleSuccess(scene) {
 }
 
 function failOrder(scene) {
-    labels.statusText.setText("⏰ TIME'S UP!");
+    labels.statusText.setText("TIME'S UP!");
     labels.statusText.setColor('#ff0000');
     
     scene.cameras.main.shake(300, 0.015);
@@ -454,7 +542,7 @@ function failOrder(scene) {
 // --- UI BUILDER FUNCTIONS ---
 
 function createModeSelectionUI(scene) {
-    scene.add.text(400, 120, '🎮 SELECT GAME MODE', {
+    scene.add.text(400, 120, 'SELECT GAME MODE', {
         fontSize: '28px',
         fill: '#FFD700',
         fontFamily: 'Courier New',
@@ -462,7 +550,7 @@ function createModeSelectionUI(scene) {
     }).setOrigin(0.5);
     
     // Random target mode
-    scene.add.text(400, 220, '🎲 RANDOM TARGET', {
+    scene.add.text(400, 220, 'RANDOM TARGET', {
         fontSize: '22px',
         fill: '#00FFFF',
         fontFamily: 'Courier New',
@@ -482,7 +570,7 @@ function createModeSelectionUI(scene) {
     randomBtn.setScale(1.2);
     
     // Free adjust mode
-    scene.add.text(400, 360, '⚙️ FREE ADJUST', {
+    scene.add.text(400, 360, 'FREE ADJUST', {
         fontSize: '22px',
         fill: '#FFD700',
         fontFamily: 'Courier New',
@@ -508,7 +596,7 @@ function createModeSelectionUI(scene) {
 }
 
 function loadAndShowItemSelection(scene) {
-    const loadingText = scene.add.text(400, 300, '⏳ LOADING ITEMS...', {
+    const loadingText = scene.add.text(400, 300, 'LOADING ITEMS...', {
         fontSize: '24px',
         fill: '#00FFFF',
         fontFamily: 'Courier New'
@@ -541,7 +629,7 @@ function loadAndShowItemSelection(scene) {
         createItemSelectionUI(scene);
     }).catch(err => {
         loadingText.destroy();
-        scene.add.text(400, 300, '⚠️ CONNECTION ERROR', {
+        scene.add.text(400, 300, 'CONNECTION ERROR', {
             fontSize: '24px',
             fill: '#ff0000',
             fontFamily: 'Courier New'
@@ -555,11 +643,11 @@ function createItemSelectionUI(scene) {
     
     scene.add.text(400, 60, `MODE: ${modeIcon} ${modeText}`, {
         fontSize: '18px',
-        fill: '#87CEEB',
+        fill: '#008080',
         fontFamily: 'Courier New'
     }).setOrigin(0.5);
     
-    scene.add.text(400, 100, '📦 SELECT ITEM', {
+    scene.add.text(400, 100, 'SELECT ITEM', {
         fontSize: '28px',
         fill: '#FFD700',
         fontFamily: 'Courier New',
@@ -617,80 +705,66 @@ function createItemSelectionUI(scene) {
 }
 
 function createGameUI(scene) {
-    // Mode display
+    // 1. Mode display
     const modeIcon = gameMode === "RANDOM" ? '🎲' : '⚙️';
     const modeText = gameMode === "RANDOM" ? 'RANDOM TARGET' : 'FREE ADJUST';
     scene.add.text(400, 50, `${modeIcon} MODE: ${modeText}`, {
-        fontSize: '16px',
-        fill: '#87CEEB',
-        fontFamily: 'Courier New'
+        fontSize: '16px', fill: '#008080', fontFamily: 'Courier New'
     }).setOrigin(0.5);
     
-    // Top status text
-    labels.statusText = scene.add.text(400, 85, 'GET READY', {
-        fontSize: '24px',
-        fill: '#00FFFF',
-        fontFamily: 'Courier New',
-        fontStyle: 'bold'
+    // Status text
+    labels.statusText = scene.add.text(400, 70, 'GET READY', {
+        fontSize: '24px', fill: '#00FFFF', fontFamily: 'Courier New', fontStyle: 'bold'
     }).setOrigin(0.5);
 
     // Item name
-    labels.itemName = scene.add.text(400, 220, '', {
-        fontSize: '22px',
-        fill: '#FFD700',
-        fontFamily: 'Courier New',
-        fontStyle: 'bold'
+    labels.itemName = scene.add.text(400, 210, '', {
+        fontSize: '22px', fill: '#FFD700', fontFamily: 'Courier New', fontStyle: 'bold', stroke: '#000000', strokeThickness: 4
     }).setOrigin(0.5);
 
     // Instruction text
     const instruction = gameMode === "RANDOM" ? 'ADJUST TO MATCH TARGET' : 'ADJUST QUANTITY AS NEEDED';
-    labels.instructions = scene.add.text(400, 250, instruction, {
-        fontSize: '14px',
-        fill: '#CCCCCC',
-        fontFamily: 'Courier New'
+    labels.instructions = scene.add.text(400, 240, instruction, {
+        fontSize: '14px', fill: '#CCCCCC', fontFamily: 'Courier New', backgroundColor: '#000000aa'
     }).setOrigin(0.5);
 
-    // Left info panel (avoid box overlap)
+    // Left info panel
     const leftX = 150;
-    const startY = 320;
+    const startY = 360;
     
-    // Database current value
-    labels.currentQtyText = scene.add.text(leftX, startY, '', {
-        fontSize: '16px',
-        fill: '#87CEEB',
-        fontFamily: 'Courier New'
-    }).setOrigin(0.5);
+    labels.currentQtyText = scene.add.text(leftX, startY, '', { fontSize: '16px', fill: '#87CEEB', fontFamily: 'Courier New' }).setOrigin(0.5);
+    labels.targetQtyText = scene.add.text(leftX, startY + 35, '', { fontSize: '18px', fill: '#00FF88', fontFamily: 'Courier New', fontStyle: 'bold' }).setOrigin(0.5);
+    labels.userValueText = scene.add.text(leftX, startY + 75, '', { fontSize: '24px', fill: '#FFFF00', fontFamily: 'Courier New', fontStyle: 'bold' }).setOrigin(0.5);
 
-    // Target value
-    labels.targetQtyText = scene.add.text(leftX, startY + 35, '', {
-        fontSize: '18px',
-        fill: '#00FF88',
-        fontFamily: 'Courier New',
-        fontStyle: 'bold'
-    }).setOrigin(0.5);
+    if (scene.textures.exists(ASSETS.ARROW_UP)) {
+        arrowUpBtn = scene.add.image(650, 330, ASSETS.ARROW_UP).setInteractive({ cursor: 'pointer' });
+        arrowUpBtn.setDisplaySize(80, 80);
+        addBtnEffects(scene, arrowUpBtn, () => adjustValue(scene, 1));
+    } else {
+        arrowUpBtn = createButton(scene, 650, 330, '▲', () => adjustValue(scene, 1));
+    }
 
-    // Player input value
-    labels.userValueText = scene.add.text(leftX, startY + 75, '', {
-        fontSize: '24px',
-        fill: '#FFFF00',
-        fontFamily: 'Courier New',
-        fontStyle: 'bold'
-    }).setOrigin(0.5);
+    if (scene.textures.exists(ASSETS.ARROW_DOWN)) {
+        arrowDownBtn = scene.add.image(650, 420, ASSETS.ARROW_DOWN).setInteractive({ cursor: 'pointer' });
+        arrowDownBtn.setDisplaySize(80, 80);
+        addBtnEffects(scene, arrowDownBtn, () => adjustValue(scene, -1));
+    } else {
+        arrowDownBtn = createButton(scene, 650, 420, '▼', () => adjustValue(scene, -1));
+    }
 
-    // Right control buttons
-    arrowUpBtn = createButton(scene, 650, 330, '▲', () => adjustValue(scene, 1));
-    arrowDownBtn = createButton(scene, 650, 380, '▼', () => adjustValue(scene, -1));
-
-    // Bottom buttons (uniform size)
-    dispatchBtn = createButton(scene, 320, 530, '📦 DISPATCH', () => attemptDispatch(scene));
-    dispatchBtn.setScale(1.1);
+    if (scene.textures.exists(ASSETS.BTN_SEND)) {
+        dispatchBtn = scene.add.image(400, 540, ASSETS.BTN_SEND).setInteractive({ cursor: 'pointer' });
+        dispatchBtn.setScale(0.3);
+        addBtnEffects(scene, dispatchBtn, () => attemptDispatch(scene));
+    } else {
+        dispatchBtn = createButton(scene, 400, 540, 'DISPATCH', () => attemptDispatch(scene));
+    }
     
-    // Back button
-    const backBtn = createButton(scene, 540, 530, '⬅ BACK', () => {
+    const backBtn = createButton(scene, 100, 550, '⬅ BACK', () => {
         if (timerEvent) timerEvent.remove();
         switchState(scene, "SELECT_MODE");
     });
-    backBtn.setScale(1.1);
+    backBtn.setScale(0.8);
 }
 
 function createButton(scene, x, y, text, callback) {
@@ -737,7 +811,7 @@ function createButton(scene, x, y, text, callback) {
 }
 
 function createMenuUI(scene) {
-    scene.add.text(400, 180, '📦 CARGO LOGISTICS CENTER', {
+    scene.add.text(400, 180, 'CARGO LOGISTICS CENTER', {
         fontSize: '28px',
         fill: '#FFD700',
         fontFamily: 'Courier New',
@@ -750,13 +824,13 @@ function createMenuUI(scene) {
         fontFamily: 'Courier New'
     }).setOrigin(0.5);
 
-    scene.add.text(400, 310, '🎲 RANDOM: Match target quantity', {
+    scene.add.text(400, 310, 'RANDOM: Match target quantity', {
         fontSize: '14px',
         fill: '#87CEEB',
         fontFamily: 'Courier New'
     }).setOrigin(0.5);
     
-    scene.add.text(400, 335, '⚙️ ADJUST: Freely change inventory', {
+    scene.add.text(400, 335, 'ADJUST: Freely change inventory', {
         fontSize: '14px',
         fill: '#87CEEB',
         fontFamily: 'Courier New'
@@ -806,5 +880,19 @@ function createGameOverUI(scene) {
         labels.scoreText.setText('SCORE: 0');
         labels.levelText.setText('LV: 1');
         switchState(scene, "MENU");
+    });
+}
+
+function addBtnEffects(scene, imageBtn, callback) {
+    imageBtn.on('pointerover', () => scene.tweens.add({ targets: imageBtn, scale: imageBtn.scaleX * 1.1, duration: 100 }));
+    imageBtn.on('pointerout', () => scene.tweens.add({ targets: imageBtn, scale: imageBtn.scaleX / 1.1, duration: 100 }));
+    imageBtn.on('pointerdown', () => {
+        scene.tweens.add({
+            targets: imageBtn,
+            scale: imageBtn.scaleX * 0.9,
+            duration: 50,
+            yoyo: true,
+            onComplete: callback
+        });
     });
 }
