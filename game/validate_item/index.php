@@ -58,10 +58,7 @@
 
     <div id="game-ui">
         <h1>🏭 Factory Control Station</h1>
-        <p>
-        MISSION: Check the <b>LIST</b>. 
-            <span style="color:#e74c3c">REJECT</span> if the price is wrong. 
-            <span style="color:#2ecc71">PASS</span> only if it matches exactly.</p>
+        <p>RULE: Reject items with <b>Negative Price</b> ($ < 0). Approve valid items.</p>
         <a href="../hub.php">⬅ BACK TO HUB</a>
     </div>
 

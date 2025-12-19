@@ -1,7 +1,6 @@
 /**
- * FACTORY VALIDATOR - "Papers, Please" Style
- * Feature: Compare items against a Reference List (Manifest).
- * Mechanic: Check if Name AND Price match the daily list.
+ * FACTORY VALIDATOR - Final Version (Custom Data)
+ * Feature: Start Menu + Time Attack + Auto-Pause Mechanism
  */
 
 const config = {
@@ -21,15 +20,11 @@ const game = new Phaser.Game(config);
 // --- 游戏状态变量 ---
 let score = 0;
 let timeLeft = 60; 
-let isGameRunning = false;
+let isGameRunning = false; // [新增] 控制游戏是否开始
 let isGameOver = false;
 let currentItem = null; 
 let spawnTimer;         
 let gameTimer;          
-
-// 数据相关
-let dbItems = [];       // 数据库里的所有商品
-let dailyManifest = []; // 今天合法的商品清单 (子集)
 
 // --- 资源键名 ---
 const ASSETS = {
@@ -38,10 +33,7 @@ const ASSETS = {
     BOX: 'box_normal',
     SCANNER: 'scanner_overlay',
     BTN_PASS: 'btn_approve',
-    BTN_FAIL: 'btn_reject',
-    UI_MANIFEST: 'ui_manifest_bg',
-    ICON_LIST: 'icon_list'
- 
+    BTN_FAIL: 'btn_reject'
 };
 
 function preload() {
@@ -51,103 +43,108 @@ function preload() {
     this.load.image(ASSETS.SCANNER, '../../assets/validate_item/img/scanner_overlay.png');
     this.load.image(ASSETS.BTN_PASS, '../../assets/validate_item/img/btn_approve.png');
     this.load.image(ASSETS.BTN_FAIL, '../../assets/validate_item/img/btn_reject.png');
-    this.load.image(ASSETS.UI_MANIFEST, '../../assets/validate_item/img/manifest_bg.png');
-    this.load.image(ASSETS.ICON_LIST, '../../assets/validate_item/img/icon_list.png');
 }
 
 function create() {
-    // 2. 初始化
+    // --- 1. 初始化变量 ---
     isGameRunning = false;
     isGameOver = false;
     score = 0;
     timeLeft = 60;
 
-    // 3. 场景
+    // --- 2. 场景搭建 (保留你的坐标设置) ---
     this.add.image(400, 300, ASSETS.BG).setDisplaySize(800, 600);
+    
+    // [用户设置] 传送带 Y = 400
     this.belt = this.add.tileSprite(400, 400, 800, 100, ASSETS.BELT); 
 
+    // [用户设置] 扫描仪 Y = 350
     this.add.image(400, 350, ASSETS.SCANNER).setAlpha(0.6).setDisplaySize(300, 220);
+    
+    // [用户设置] 文字 Y = 300
     this.scannerText = this.add.text(400, 300, "", {
         font: '18px monospace', fill: '#00ff00', align: 'center', stroke: '#000', strokeThickness: 2
     }).setOrigin(0.5);
 
     createButtons(this);
 
-    // 4. UI
-    this.scoreText = this.add.text(20, 20, "SCORE: 0", { fontSize: '32px', fill: '#fff', stroke: '#000', strokeThickness: 4 });
-    this.timerText = this.add.text(600, 20, "TIME: 60", { fontSize: '32px', fill: '#00ff00', stroke: '#000', strokeThickness: 4 });
-
-    // --- 新增：清单按钮 UI ---
-    createManifestUI(this);
-
-        // 请求数据
-    apiListItems().then(res => {
-        if (res.success && res.items.length > 0) {
-            dbItems = res.items;
-            console.log("DB Loaded: " + dbItems.length);
-        } else {
-            console.log("DB Error, using mock data");
-            // 备用假数据，防止没连数据库时游戏崩溃
-            dbItems = [
-                { item_name: "Apple", price: "5.00" },
-                { item_name: "Banana", price: "3.50" },
-                { item_name: "GPU", price: "999.00" },
-                { item_name: "Mouse", price: "25.00" },
-                { item_name: "Keyboard", price: "50.00" }
-            ];
-        }
-        // 数据加载完后，生成今天的“每日清单”
-        generateDailyManifest();
-        // 刷新一下UI里的清单显示
-        updateManifestUI(this);
+    // --- 3. UI 信息 ---
+    this.scoreText = this.add.text(20, 20, "SCORE: 0", { 
+        fontSize: '32px', fill: '#fff', stroke: '#000', strokeThickness: 4 
+    });
+    
+    this.timerText = this.add.text(600, 20, "TIME: 60", { 
+        fontSize: '32px', fill: '#00ff00', stroke: '#000', strokeThickness: 4 
     });
 
-    // 5. 逻辑
+    // --- 4. 游戏逻辑组 ---
     this.boxes = this.physics.add.group();
 
+    // 生成定时器 (默认暂停)
     spawnTimer = this.time.addEvent({
-        delay: 3000, // 稍微慢一点，给玩家看清单的时间
+        delay: 2500, 
         callback: spawnBox,
         callbackScope: this,
         loop: true,
-        paused: true 
+        paused: true // [关键] 一开始是暂停的，等待点击开始
     });
 
+    // 倒计时定时器 (默认暂停)
     gameTimer = this.time.addEvent({
         delay: 1000,
         callback: onSecondTick,
         callbackScope: this,
         loop: true,
-        paused: true 
+        paused: true // [关键] 一开始是暂停的
     });
 
+    // --- 5. 创建开始菜单 ---
     createStartMenu(this);
 }
 
 function update(time, delta) {
+    // [新增] 如果游戏还没开始，或者结束了，什么都不做
     if (!isGameRunning || isGameOver) return;
 
+    // --- 游戏主循环 ---
+
     if (currentItem) {
+        // [状态: 暂停检查中]
         spawnTimer.paused = true;
-        this.boxes.getChildren().forEach(box => { if (!box.processed) box.body.setVelocityX(0); });
+        
+        // 让所有未处理的箱子停下
+        this.boxes.getChildren().forEach(box => {
+            if (!box.processed) box.body.setVelocityX(0);
+        });
+
     } else {
+        // [状态: 流水线运行中]
         spawnTimer.paused = false;
+        
         const moveDistance = 200 * (delta / 1000); 
+        
         this.belt.tilePositionX -= moveDistance;
 
+        // 箱子移动
         this.boxes.getChildren().forEach(box => {
+            // [用户设置] 箱子速度 200
             if (!box.processed) box.body.setVelocityX(200);
+            
+            // 销毁出界
             if (box.x > 850) box.destroy();
         });
         
+        // 寻找新目标
         let foundBox = null;
         this.boxes.getChildren().forEach(box => {
-            if (!box.processed && box.x > 390 && box.x < 410) foundBox = box;
+            if (!box.processed && box.x > 390 && box.x < 410) {
+                foundBox = box;
+            }
         });
 
         if (foundBox) {
             currentItem = foundBox;
-            this.scannerText.setText(`${currentItem.itemData.name}\n$${currentItem.itemData.price}`);
+            this.scannerText.setText(`ITEM DETECTED\nPRICE: $${currentItem.itemData.price}`);
             currentItem.body.setVelocityX(0);
         } else {
              if(!currentItem) this.scannerText.setText("WAITING...");
@@ -155,150 +152,40 @@ function update(time, delta) {
     }
 }
 
-// --- 核心逻辑修改区域 ---
-
-// 1. 生成“每日清单” (从大库里随机抽4个)
-function generateDailyManifest() {
-    // 随机打乱 dbItems
-    const shuffled = dbItems.sort(() => 0.5 - Math.random());
-    // 取前 4 个 (如果不够4个就全取)
-    dailyManifest = shuffled.slice(0, 4);
-}
-
-// 2. 创建查看清单的 UI
-function createManifestUI(scene) {
-    
-
-    const panel = scene.add.container(400, 300);
-
-    // 背景图
-    const bg = scene.add.image(0, 0, ASSETS.UI_MANIFEST).setDisplaySize(1000, 500);
-    
-    // [修改点] 删除了之前的 "DAILY ORDERS" 标题代码
-    // 因为你的背景图里已经印着这行字了，再写一遍就重影了
-
-    const closeBtn = scene.add.text(0, 200, "[ CLOSE ]", { 
-        fontSize: '20px', color: '#ff0000', fontStyle: 'bold', backgroundColor: '#ffffff'
-    }).setOrigin(0.5).setInteractive({ cursor: 'pointer' });
-
-    // [修改点] 调整文字坐标
-    // x: -120 (稍微靠左一点，留出边距)
-    // y: -80 (往下移，避开顶部的夹子和标题)
-    const listText = scene.add.text(-100, -110, "Loading data...", { 
-        fontSize: '20px',        // 稍微加大一点字体
-        color: '#000000',        // 纯黑色
-        fontFamily: 'Courier',   // 换个字体试试，看起来更像打印出来的
-        fontStyle: 'bold',       // 加粗
-        lineSpacing: 5          // 行间距加大
-    });
-
-    panel.add([bg, listText, closeBtn]);
-    panel.setVisible(false); 
-    panel.setDepth(2000);   
-
-    scene.manifestPanel = panel;
-    scene.manifestText = listText;
-
-    const listIcon = scene.add.image(750, 530, ASSETS.ICON_LIST)
-        .setDisplaySize(0, 150) // 设置大小
-        .setInteractive({ cursor: 'pointer' })
-        .setDepth(100);
-
-    // --- 3. 绑定事件 ---
-    
-    // 图标点击事件
-    listIcon.on('pointerdown', () => {
-        if(isGameRunning) {
-            // 切换面板的显示/隐藏
-            panel.setVisible(!panel.visible);
-        }
-    });
-
-    closeBtn.on('pointerdown', () => { panel.setVisible(false); });
-}
-
-function updateManifestUI(scene) {
-    if (!scene.manifestText) return;
-    
-    let content = "";
-    dailyManifest.forEach(item => {
-        // 格式: Name ...... $Price
-        content += `• ${item.item_name}\n  $${parseFloat(item.price).toFixed(2)}\n\n`;
-    });
-    scene.manifestText.setText(content);
-}
-// 3. 生成箱子 (难度升级版)
-function spawnBox() {
-    if (isGameOver || !isGameRunning) return;
-
-    // 决定这是否是一个合法的箱子 (50% 概率)
-    const isValid = Math.random() < 0.5;
-    
-    let boxName, boxPrice;
-    
-    // 从每日清单里随机选一个作为“模板”
-    if (dailyManifest.length === 0) return; // 还没加载完
-    const templateItem = Phaser.Utils.Array.GetRandom(dailyManifest);
-    const realPrice = parseFloat(templateItem.price);
-
-    if (isValid) {
-        // 情况 A: 这是一个完美的合法商品
-        boxName = templateItem.item_name;
-        boxPrice = realPrice;
-    } else {
-        // 情况 B: 这是一个伪造/错误的商品
-        // 随机决定是 "改价格" 还是 "改名字" (这里我们主要做改价格，因为改名字需要更多数据)
-        
-        // 错误类型: 价格偏差
-        // 随机加减 10-50% 的价格
-        const variance = (Math.random() * 0.5) + 0.1; // 0.1 ~ 0.6
-        const sign = Math.random() < 0.5 ? 1 : -1;
-        
-        let fakePrice = realPrice + (realPrice * variance * sign);
-        if (fakePrice < 0) fakePrice = 1.00; // 保证不出现负数，增加迷惑性
-        
-        boxName = templateItem.item_name;
-        boxPrice = fakePrice; // 名字对，但价格不对！
-    }
-
-    const box = this.boxes.create(-50, 380, ASSETS.BOX); 
-    box.setDisplaySize(64, 64);
-    
-    // 绑定数据
-    box.itemData = { 
-        name: boxName, 
-        price: boxPrice.toFixed(2), // 显示两位小数
-        isValid: isValid // 判定结果早已注定
-    };
-    box.processed = false;
-}
-
-// --- 通用功能保持不变 ---
+// --- 功能函数 ---
 
 function createStartMenu(scene) {
     scene.startMenuContainer = scene.add.container(0, 0);
+
+    // 1. 背景
     const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.85).setInteractive();
-    const title = scene.add.text(400, 180, "QUALITY CONTROL", { fontSize: '50px', fontStyle: 'bold', color: '#e67e22', stroke: '#fff', strokeThickness: 2 }).setOrigin(0.5);
-    
-    // 修改说明文案
-    const desc = scene.add.text(400, 280, 
-        "MISSION: Verify incoming boxes against the Manifest.\n\n" +
-        "1. Click [LIST] to see valid prices.\n" +
-        "2. If Name & Price match -> PASS\n" +
-        "3. If Price is WRONG -> REJECT", 
-        { fontSize: '20px', color: '#ccc', align: 'center', lineSpacing: 10 }
-    ).setOrigin(0.5);
 
-    const startBtn = scene.add.text(400, 450, "[ CLICK TO START ]", { fontSize: '32px', color: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5).setInteractive({ cursor: 'pointer' });
-    
-    scene.tweens.add({ targets: startBtn, alpha: 0.5, duration: 800, yoyo: true, repeat: -1 });
+    // 2. 标题
+    const title = scene.add.text(400, 200, "FACTORY CONTROL", {
+        fontSize: '50px', fontStyle: 'bold', color: '#e67e22', stroke: '#fff', strokeThickness: 2
+    }).setOrigin(0.5);
 
+    // 3. 说明
+    const desc = scene.add.text(400, 280, "GOAL: Validate items in 60 seconds.\n\nNegative Price = REJECT (Red)\nPositive Price = PASS (Green)", {
+        fontSize: '20px', color: '#ccc', align: 'center', lineSpacing: 10
+    }).setOrigin(0.5);
+
+    // 4. 开始按钮
+    const startBtn = scene.add.text(400, 450, "[ CLICK TO START ]", {
+        fontSize: '32px', color: '#00ff00', fontStyle: 'bold'
+    }).setOrigin(0.5).setInteractive({ cursor: 'pointer' });
+
+    scene.tweens.add({
+        targets: startBtn, alpha: 0.5, duration: 800, yoyo: true, repeat: -1
+    });
+
+    // 5. 点击事件
     startBtn.on('pointerdown', () => {
         scene.startMenuContainer.setVisible(false);
         isGameRunning = true;
         spawnTimer.paused = false;
         gameTimer.paused = false;
-        spawnBox.call(scene);
+        spawnBox.call(scene); // 立即生成第一个
     });
 
     scene.startMenuContainer.add([bg, title, desc, startBtn]);
@@ -310,6 +197,19 @@ function onSecondTick() {
     this.timerText.setText("TIME: " + timeLeft);
     if (timeLeft <= 10) this.timerText.setColor('#ff0000');
     if (timeLeft <= 0) gameOver(this);
+}
+
+function spawnBox() {
+    if (isGameOver || !isGameRunning) return;
+
+    const isBad = Math.random() < 0.5;
+    let priceVal = isBad ? Phaser.Math.Between(-99, -1) : Phaser.Math.Between(10, 99);
+
+    // [用户设置] 生成高度 Y = 380
+    const box = this.boxes.create(-50, 380, ASSETS.BOX); 
+    box.setDisplaySize(64, 64);
+    box.itemData = { price: priceVal, isValid: !isBad };
+    box.processed = false;
 }
 
 function createButtons(scene) {
@@ -339,9 +239,11 @@ function processDecision(scene, decision) {
     const data = currentItem.itemData;
     let correct = false;
 
-    // 逻辑：VALID 的必须 PASS，INVALID 的必须 REJECT
     if (decision === 'PASS') {
-        if (data.isValid) correct = true;
+        if (data.isValid) {
+            correct = true;
+            callValidateApi(scene, data.price);
+        }
     } else if (decision === 'REJECT') {
         if (!data.isValid) correct = true;
     }
@@ -362,6 +264,7 @@ function processDecision(scene, decision) {
         currentItem.body.setVelocityY(200); 
         scene.tweens.add({ targets: currentItem, alpha: 0, duration: 500 });
     } else {
+        // [用户设置] 离开速度 200 (匹配传送带)
         currentItem.body.setVelocityX(200); 
         currentItem.setTint(0x55ff55);
     }
@@ -375,8 +278,7 @@ function handleMistake(scene, msg) {
 }
 
 function callValidateApi(scene, price) {
-    // 依然发送到后端 API，假装在验证
-    const payload = { name: "Game Check", quantity: 1, price: price };
+    const payload = { name: "Factory Item", quantity: 1, price: price };
     apiValidateItem(payload); 
 }
 
@@ -402,6 +304,6 @@ function gameOver(scene) {
         .setOrigin(0.5).setInteractive({ cursor: 'pointer' }).setDepth(2001);
         
     restartBtn.on('pointerdown', () => {
-        scene.scene.restart(); 
+        scene.scene.restart(); // 重启场景
     });
 }
